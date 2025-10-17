@@ -313,19 +313,17 @@ static void handleScroll() {
     vector<int> posOf(teams.size());
     for (int i = 0; i < (int)order.size(); ++i) posOf[order[i]] = i;
 
-    // Priority queue to always pick the lowest-ranked team that still has frozen problems
-    priority_queue<pair<int,int>> pq; // (position, teamId), max-heap so larger position = lower rank first
+    // Ordered set keyed by current position to always pick lowest-ranked team with frozen problems
+    set<pair<int,int>> posSet; // (position, teamId)
     for (int tid = 0; tid < (int)teams.size(); ++tid) {
-        if (teams[tid].frozenCount > 0) pq.emplace(posOf[tid], tid);
+        if (teams[tid].frozenCount > 0) posSet.emplace(posOf[tid], tid);
     }
 
-    while (!pq.empty()) {
-        auto [posSnapshot, tid] = pq.top(); pq.pop();
-        if (teams[tid].frozenCount <= 0) continue; // no longer frozen
-        if (posOf[tid] != posSnapshot) { // stale entry, reinsert with updated position
-            pq.emplace(posOf[tid], tid);
-            continue;
-        }
+    while (!posSet.empty()) {
+        auto it = prev(posSet.end());
+        int tid = it->second;
+        posSet.erase(it);
+        if (teams[tid].frozenCount <= 0) continue;
 
         // Select smallest problem index among this team's frozen problems
         Team &TT = teams[tid];
@@ -333,9 +331,10 @@ static void handleScroll() {
         for (int p = 0; p < problemCountM; ++p) {
             if (!TT.probs[p].solved && !TT.probs[p].freeze.submissions.empty()) { chosenProb = p; break; }
         }
-        if (chosenProb == -1) continue; // nothing to unfreeze, skip
+        if (chosenProb == -1) continue; // nothing to unfreeze
 
         vector<int> preOrder = order;
+        vector<int> prePos = posOf;
         int oldPos = posOf[tid];
 
         applyUnfreezeFor(TT, chosenProb);
@@ -349,8 +348,16 @@ static void handleScroll() {
             cout << TT.name << ' ' << replacedName << ' ' << TT.solvedCount << ' ' << TT.totalPenalty << '\n';
         }
 
-        // If this team still has frozen problems, reinsert with updated position
-        if (TT.frozenCount > 0) pq.emplace(posOf[tid], tid);
+        // Update positions in posSet for teams whose position changed and still have frozen problems
+        for (int i = curPos; i <= oldPos; ++i) {
+            int t2 = order[i];
+            if (teams[t2].frozenCount > 0) {
+                posSet.erase({prePos[t2], t2});
+                posSet.emplace(posOf[t2], t2);
+            }
+        }
+        // Reinsert current team if it still has frozen problems
+        if (TT.frozenCount > 0) posSet.emplace(posOf[tid], tid);
     }
 
     printScoreboard(order, /*showFrozenCells=*/false);
