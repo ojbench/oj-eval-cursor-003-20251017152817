@@ -41,9 +41,6 @@ struct Team {
     // Count of problems that have frozen submissions in current freeze cycle
     int frozenCount = 0;
 
-    // Count of problems that have frozen submissions in current freeze cycle
-    int frozenCount = 0;
-
     bool hasFrozenProblems() const {
         for (const auto &p : probs) {
             if (!p.solved && !p.freeze.submissions.empty()) return true;
