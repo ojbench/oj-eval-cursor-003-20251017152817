@@ -38,6 +38,12 @@ struct Team {
     // For queries
     vector<SubmissionRecord> submissions; // all submissions in order
 
+    // Count of problems that have frozen submissions in current freeze cycle
+    int frozenCount = 0;
+
+    // Count of problems that have frozen submissions in current freeze cycle
+    int frozenCount = 0;
+
     bool hasFrozenProblems() const {
         for (const auto &p : probs) {
             if (!p.solved && !p.freeze.submissions.empty()) return true;
@@ -231,7 +237,13 @@ static void handleSubmit(int problemIndex, const string &teamName, JudgeStatus s
             PS.wrongUnsolved++;
         }
     } else {
-        PS.freeze.submissions.emplace_back(status, time);
+        // During freeze, only track submissions for problems that were unsolved at freeze time
+        if (!PS.solved) {
+            if (PS.freeze.submissions.empty()) {
+                T.frozenCount++;
+            }
+            PS.freeze.submissions.emplace_back(status, time);
+        }
     }
 }
 
@@ -248,6 +260,7 @@ static void handleFreeze() {
     }
     frozen = true;
     for (auto &T : teams) {
+        T.frozenCount = 0;
         for (auto &PS : T.probs) {
             PS.freeze.preFreezeWrong = PS.solved ? 0 : PS.wrongUnsolved;
             PS.freeze.submissions.clear();
@@ -262,6 +275,7 @@ static void applyUnfreezeFor(Team &T, int pidx) {
         PS.freeze.submissions.clear();
         return;
     }
+    bool hadFrozen = !PS.freeze.submissions.empty();
     int wrongBefore = PS.wrongUnsolved; // equals PS.freeze.preFreezeWrong at start
     for (auto &ev : PS.freeze.submissions) {
         if (PS.solved) break;
@@ -283,6 +297,7 @@ static void applyUnfreezeFor(Team &T, int pidx) {
         PS.wrongUnsolved = wrongBefore;
     }
     PS.freeze.submissions.clear();
+    if (hadFrozen && T.frozenCount > 0) T.frozenCount--;
 }
 
 static void handleScroll() {
@@ -298,32 +313,33 @@ static void handleScroll() {
     hasFlushed = true;
     printScoreboard(order, /*showFrozenCells=*/true);
 
-    auto hasAnyFrozen = [&]() -> bool {
-        for (const auto &T : teams) if (T.hasFrozenProblems()) return true;
-        return false;
-    };
-
     vector<int> posOf(teams.size());
     for (int i = 0; i < (int)order.size(); ++i) posOf[order[i]] = i;
 
-    while (hasAnyFrozen()) {
-        int chosenTeam = -1;
-        for (int i = (int)order.size() - 1; i >= 0; --i) {
-            int tid = order[i];
-            if (teams[tid].hasFrozenProblems()) { chosenTeam = tid; break; }
-        }
-        if (chosenTeam == -1) break;
+    // Priority queue to always pick the lowest-ranked team that still has frozen problems
+    priority_queue<pair<int,int>> pq; // (position, teamId), max-heap so larger position = lower rank first
+    for (int tid = 0; tid < (int)teams.size(); ++tid) {
+        if (teams[tid].frozenCount > 0) pq.emplace(posOf[tid], tid);
+    }
 
+    while (!pq.empty()) {
+        auto [posSnapshot, tid] = pq.top(); pq.pop();
+        if (teams[tid].frozenCount <= 0) continue; // no longer frozen
+        if (posOf[tid] != posSnapshot) { // stale entry, reinsert with updated position
+            pq.emplace(posOf[tid], tid);
+            continue;
+        }
+
+        // Select smallest problem index among this team's frozen problems
+        Team &TT = teams[tid];
         int chosenProb = -1;
-        Team &TT = teams[chosenTeam];
         for (int p = 0; p < problemCountM; ++p) {
             if (!TT.probs[p].solved && !TT.probs[p].freeze.submissions.empty()) { chosenProb = p; break; }
         }
-        if (chosenProb == -1) break;
+        if (chosenProb == -1) continue; // nothing to unfreeze, skip
 
         vector<int> preOrder = order;
-        vector<int> prePos = posOf;
-        int oldPos = posOf[chosenTeam];
+        int oldPos = posOf[tid];
 
         applyUnfreezeFor(TT, chosenProb);
 
@@ -335,6 +351,9 @@ static void handleScroll() {
             string replacedName = teams[preOrder[curPos]].name;
             cout << TT.name << ' ' << replacedName << ' ' << TT.solvedCount << ' ' << TT.totalPenalty << '\n';
         }
+
+        // If this team still has frozen problems, reinsert with updated position
+        if (TT.frozenCount > 0) pq.emplace(posOf[tid], tid);
     }
 
     printScoreboard(order, /*showFrozenCells=*/false);
@@ -344,6 +363,7 @@ static void handleScroll() {
     hasFlushed = true;
 
     for (auto &T : teams) {
+        T.frozenCount = 0;
         for (auto &PS : T.probs) {
             PS.freeze.submissions.clear();
             PS.freeze.preFreezeWrong = 0;
