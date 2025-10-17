@@ -105,7 +105,7 @@ static string statusToString(JudgeStatus s) {
 }
 
 // Comparator for ranking (current state of teams)
-static bool betterTeam(int a, int b) {
+static inline bool betterTeam(int a, int b) {
     const Team &A = teams[a], &B = teams[b];
     if (A.solvedCount != B.solvedCount) return A.solvedCount > B.solvedCount;
     if (A.totalPenalty != B.totalPenalty) return A.totalPenalty < B.totalPenalty;
@@ -119,14 +119,14 @@ static bool betterTeam(int a, int b) {
     return A.name < B.name;
 }
 
-static vector<int> computeOrderAllTeams() {
+static inline vector<int> computeOrderAllTeams() {
     vector<int> order(teams.size());
     iota(order.begin(), order.end(), 0);
     stable_sort(order.begin(), order.end(), [](int a, int b){ return betterTeam(a,b); });
     return order;
 }
 
-static void bubbleUp(int &pos, vector<int> &order) {
+static inline void bubbleUp(int &pos, vector<int> &order) {
     while (pos > 0) {
         int cur = order[pos];
         int prev = order[pos - 1];

@@ -7,4 +7,5 @@ set(CMAKE_BUILD_TYPE Release)
 
 add_executable(code code.cpp)
 
-target_compile_options(code PRIVATE -O2 -pipe -s)
+# Optimize aggressively for speed
+target_compile_options(code PRIVATE -O3 -DNDEBUG -flto -s)
